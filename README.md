@@ -30,35 +30,62 @@ uv run jev-music song.mp3 --hint "曲名: ○○ / タグ: シティポップ"  
 出力例:
 
 ```
-🎵 brahms.ogg
+🎵 Kevin_MacLeod_-_Vibe_Ace.ogg
 
 [librosa] 測定
-  テンポ     143.6 BPM（ビート 95 個 / 規則性 0.939）
-  キー       G minor（確からしさ 0.099）
-  長さ       45.8 秒 / 音圧 -29.5 dBFS / 抑揚 57.5 dB
-  音色       重心 2085 Hz / 打楽器比 0.078 / 毎秒 2.14 音
+  テンポ     103.4 BPM（ビート 98 個 / 拍の明確さ 0.534 / 2・4拍子系）
+  キー       E major（確からしさ 0.139）
+  長さ       61.5 秒 / 音圧 -22.7 dBFS / 抑揚 18.4 dB
+  音色       重心 887 Hz / 低音比 0.794 / 高音比 0.0011 / ノイズ感 0.0026
+  リズム     打楽器比 0.067 / 毎秒 4.75 音
 
 [Jev] 判定
-  ジャンル   classical（classical 86% / folk_acoustic 7% / pop 3%）
-  ムード     energetic（energetic 66% / sad 16% / dark 9%）
-  明るさ     1.09 / 4
-  激しさ     2.49 / 4
-  踊れる     52%
-  作業BGM    45%
+  ジャンル   jazz（jazz 60% / hiphop 17% / rnb_soul 5%）
+  ムード     dark（dark 51% / calm 41% / romantic 5%）
+  明るさ     1.42 / 4
+  激しさ     1.49 / 4
+  踊れる     39%
+  作業BGM    51%
+  電子音中心 37%
 
-  ⏱ 解析 1.20s / Jev 0.43s
+  ⏱ 解析 2.58s / Jev 0.50s
 ```
+
+## 評価
+
+librosa 付属の楽曲 7 曲でジャンル判定を確認できる。
+
+```sh
+uv run python scripts/eval_examples.py
+```
+
+| 曲 | 判定 | |
+|---|---|---|
+| brahms（クラシック） | classical 84% | ✅ |
+| choice（ドラムンベース） | drum_and_bass 95% | ✅ |
+| fishin（カントリーポップ） | pop 79%（country_bluegrass は 3 位） | ❌ |
+| nutcracker（クラシック） | classical 82% | ✅ |
+| pistachio（ラグタイム） | classical 81% | ✅ |
+| sweetwaltz（ワルツ） | classical 99% | ✅ |
+| vibeace（ジャズ寄りラウンジ） | jazz 60% | ✅ |
+
+改善の経緯: 2/7 → 6/7
+
+- ビート間隔の規則性はビート検出器が等間隔に揃えるため全曲 0.93〜0.96 になり、電子音楽寄りに判定されていた → オンセット自己相関による「拍の明確さ」と拍子推定に置き換え
+- 低音比（150Hz 未満）・高音比（4kHz 超）・スペクトル平坦度を追加
+- ジャンルの説明を、state に渡す特徴量と同じ語彙（低音・打楽器・音圧・抑揚）で書き直した
 
 ## Jev に投げている質問
 
 | key | type | 内容 |
 |---|---|---|
-| genre | choice | ジャンル（12種、`jev.py` の `GENRES`） |
+| genre | choice | ジャンル（17種、`jev.py` の `GENRES`） |
 | mood | choice | ムード（7種、`MOODS`） |
 | valence | score | 明るさ 0〜4 |
 | energy | score | 激しさ 0〜4 |
 | danceable | noul | 踊りやすいか |
 | focus_bgm | noul | 作業用BGMに向くか |
+| electronic | noul | 電子音中心か |
 
 ## 環境変数
 

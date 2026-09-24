@@ -17,12 +17,16 @@ class Features:
     duration_sec: float
     bpm: float
     beat_count: int
-    beat_regularity: float  # 0-1。ビート間隔が一定なほど 1
+    pulse_clarity: float  # 0-1。拍の感じやすさ（オンセットの自己相関のピーク）
+    meter: str  # "triple"（3拍子系）か "duple"（2・4拍子系）
     key: str
     key_confidence: float
     loudness_db: float
     dynamic_range_db: float
     brightness_hz: float  # スペクトル重心
+    bass_ratio: float  # 150Hz 未満のエネルギー比
+    treble_ratio: float  # 4kHz 超のエネルギー比
+    noisiness: float  # スペクトル平坦度。歪み・シンセ・シンバルなどで高くなる
     onset_rate: float  # 1秒あたりの発音数
     percussive_ratio: float  # 打楽器成分の割合 0-1
     zero_crossing_rate: float
@@ -51,12 +55,27 @@ def extract(path: str, max_duration: float | None = 120.0) -> Features:
     y_harm, y_perc = librosa.effects.hpss(y)
     onset_env = librosa.onset.onset_strength(y=y_perc, sr=sr)
     tempo, beats = librosa.beat.beat_track(onset_envelope=onset_env, sr=sr)
-    beat_times = librosa.frames_to_time(beats, sr=sr)
-    intervals = np.diff(beat_times)
-    regularity = 1.0 - min(1.0, float(np.std(intervals) / np.mean(intervals))) if intervals.size > 1 else 0.0
+    bpm = float(np.atleast_1d(tempo)[0])
+
+    # ビート検出器は等間隔にビートを置くので、ビート間隔ではなくオンセットの自己相関で拍の明確さと拍子を見る
+    hop = 512
+    ac = librosa.autocorrelate(onset_env - onset_env.mean())
+    ac /= ac[0]
+    pulse = float(ac[int(0.25 * sr / hop) : int(2.0 * sr / hop)].max())
+    beat_frames = 60 / bpm * sr / hop if bpm > 0 else 0
+
+    def ac_at(n_beats: int) -> float:
+        i = int(round(n_beats * beat_frames))
+        return float(ac[i]) if 0 < i < len(ac) else 0.0
+
+    meter = "triple" if ac_at(3) > ac_at(4) * 1.2 and ac_at(3) > ac_at(2) * 0.7 else "duple"
 
     chroma = librosa.feature.chroma_cqt(y=y_harm, sr=sr)
     key, key_conf = estimate_key(chroma)
+
+    power = np.abs(librosa.stft(y, hop_length=hop)) ** 2
+    freqs = librosa.fft_frequencies(sr=sr)
+    total = power.sum() + 1e-12
 
     rms_db = librosa.amplitude_to_db(librosa.feature.rms(y=y)[0], ref=1.0)
     onsets = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr)
@@ -65,14 +84,18 @@ def extract(path: str, max_duration: float | None = 120.0) -> Features:
 
     return Features(
         duration_sec=round(duration, 1),
-        bpm=round(float(np.atleast_1d(tempo)[0]), 1),
+        bpm=round(bpm, 1),
         beat_count=int(len(beats)),
-        beat_regularity=round(regularity, 3),
+        pulse_clarity=round(pulse, 3),
+        meter=meter,
         key=key,
         key_confidence=key_conf,
         loudness_db=round(float(np.mean(rms_db)), 1),
         dynamic_range_db=round(float(np.percentile(rms_db, 95) - np.percentile(rms_db, 5)), 1),
         brightness_hz=round(float(np.mean(librosa.feature.spectral_centroid(y=y, sr=sr))), 0),
+        bass_ratio=round(float(power[freqs < 150].sum() / total), 3),
+        treble_ratio=round(float(power[freqs > 4000].sum() / total), 4),
+        noisiness=round(float(np.mean(librosa.feature.spectral_flatness(y=y))), 4),
         onset_rate=round(len(onsets) / duration, 2),
         percussive_ratio=round(perc_e / (harm_e + perc_e), 3),
         zero_crossing_rate=round(float(np.mean(librosa.feature.zero_crossing_rate(y))), 4),
