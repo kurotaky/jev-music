@@ -42,27 +42,46 @@ MOODS = {
 }
 
 
-def describe(f: Features) -> dict:
-    """数値だけだと判断しづらいので、目安の言葉を添えて state にする。"""
+def describe_parts(f: Features) -> dict[str, tuple[str, str]]:
+    """特徴ごとに（数値の表現, 目安の言葉）の組を返す。"""
 
     def level(v, lo, hi, labels=("低い", "中くらい", "高い")):
         return labels[0] if v < lo else labels[2] if v > hi else labels[1]
 
+    perc = "ほぼ無し" if f.percussive_ratio < 0.1 else level(f.percussive_ratio, 0.2, 0.4, ("少ない", "中くらい", "多い"))
     return {
-        "duration": f"{f.duration_sec}秒",
-        "tempo": f"{f.bpm} BPM（{level(f.bpm, 90, 130, ('遅い', '中くらい', '速い'))}。ビート検出は倍・半分に誤ることがある）",
-        "pulse_clarity": f"{f.pulse_clarity}（拍の感じやすさ。{level(f.pulse_clarity, 0.3, 0.7, ('弱い・テンポが揺れる', 'はっきりしている', '非常に明確・機械的'))}）",
-        "meter": "3拍子系" if f.meter == "triple" else "2・4拍子系",
-        "key": f"{f.key}（{'長調' if 'major' in f.key else '短調'}、推定の確からしさ {f.key_confidence}）",
-        "loudness": f"平均 {f.loudness_db} dBFS（音圧{level(f.loudness_db, -30, -18)}）",
-        "dynamic_range": f"{f.dynamic_range_db} dB（抑揚{level(f.dynamic_range_db, 15, 30, ('小さい・コンプレッサーで均一', '中くらい', '大きい'))}）",
-        "brightness": f"スペクトル重心 {f.brightness_hz:.0f} Hz（音色が{level(f.brightness_hz, 1500, 3000, ('暗い・柔らかい', '標準的', '明るい・きらびやか'))}）",
-        "bass": f"150Hz未満のエネルギー比 {f.bass_ratio}（ベース・キックなど低音が{level(f.bass_ratio, 0.2, 0.5, ('少ない', '中くらい', '非常に多い'))}）",
-        "treble": f"4kHz超のエネルギー比 {f.treble_ratio}（シンバル・ハイハット・歪みなど高音成分が{level(f.treble_ratio, 0.005, 0.03, ('少ない', '中くらい', '多い'))}）",
-        "noisiness": f"スペクトル平坦度 {f.noisiness}（{level(f.noisiness, 0.005, 0.03, ('澄んだ楽音中心', '中くらい', 'ノイズ・歪み・シンセ成分が多い'))}）",
-        "onset_rate": f"毎秒 {f.onset_rate} 音（音数{level(f.onset_rate, 2, 5, ('少ない', '中くらい', '多い'))}）",
-        "percussive_ratio": f"{f.percussive_ratio}（打楽器成分{'ほぼ無し' if f.percussive_ratio < 0.1 else level(f.percussive_ratio, 0.2, 0.4, ('少ない', '中くらい', '多い'))}）",
+        "duration": (f"{f.duration_sec}秒", ""),
+        "tempo": (f"{f.bpm} BPM", f"{level(f.bpm, 90, 130, ('遅い', '中くらい', '速い'))}。ビート検出は倍・半分に誤ることがある"),
+        "pulse_clarity": (f"{f.pulse_clarity}", f"拍の感じやすさ。{level(f.pulse_clarity, 0.3, 0.7, ('弱い・テンポが揺れる', 'はっきりしている', '非常に明確・機械的'))}"),
+        "meter": ("3拍子系" if f.meter == "triple" else "2・4拍子系", ""),
+        "key": (f"{f.key}", f"{'長調' if 'major' in f.key else '短調'}、推定の確からしさ {f.key_confidence}"),
+        "loudness": (f"平均 {f.loudness_db} dBFS", f"音圧{level(f.loudness_db, -30, -18)}"),
+        "dynamic_range": (f"{f.dynamic_range_db} dB", f"抑揚{level(f.dynamic_range_db, 15, 30, ('小さい・コンプレッサーで均一', '中くらい', '大きい'))}"),
+        "brightness": (f"スペクトル重心 {f.brightness_hz:.0f} Hz", f"音色が{level(f.brightness_hz, 1500, 3000, ('暗い・柔らかい', '標準的', '明るい・きらびやか'))}"),
+        "bass": (f"150Hz未満のエネルギー比 {f.bass_ratio}", f"ベース・キックなど低音が{level(f.bass_ratio, 0.2, 0.5, ('少ない', '中くらい', '非常に多い'))}"),
+        "treble": (f"4kHz超のエネルギー比 {f.treble_ratio}", f"シンバル・ハイハット・歪みなど高音成分が{level(f.treble_ratio, 0.005, 0.03, ('少ない', '中くらい', '多い'))}"),
+        "noisiness": (f"スペクトル平坦度 {f.noisiness}", level(f.noisiness, 0.005, 0.03, ("澄んだ楽音中心", "中くらい", "ノイズ・歪み・シンセ成分が多い"))),
+        "onset_rate": (f"毎秒 {f.onset_rate} 音", f"音数{level(f.onset_rate, 2, 5, ('少ない', '中くらい', '多い'))}"),
+        "percussive_ratio": (f"打楽器成分の割合 {f.percussive_ratio}", f"打楽器成分{perc}"),
     }
+
+
+def describe(f: Features, mode: str = "both") -> dict:
+    """Jev に渡す state。数値だけだと判断しづらいので、既定では目安の言葉を添える。
+
+    mode: "both"（数値＋言葉） / "numbers"（数値だけ） / "labels"（言葉だけ）
+    """
+    out = {}
+    for k, (num, label) in describe_parts(f).items():
+        if mode == "numbers":
+            v = num
+        elif mode == "labels":
+            v = label
+        else:
+            v = f"{num}（{label}）" if num and label else num or label
+        if v:
+            out[k] = v
+    return out
 
 
 def build_questions() -> dict:
@@ -93,15 +112,12 @@ def build_questions() -> dict:
     }
 
 
-def classify(f: Features, hint: str | None = None, timeout: float = 30) -> dict:
+def call(state: dict, questions: dict, timeout: float = 30) -> dict:
     key = os.environ.get("AI_GATEWAY_API_KEY")
     if not key:
         raise RuntimeError("AI_GATEWAY_API_KEY が設定されていません")
 
-    state = {"audio_features": describe(f)}
-    if hint:
-        state["hint"] = hint
-    body = json.dumps({"model": MODEL, "state": state, "questions": build_questions()}).encode()
+    body = json.dumps({"model": MODEL, "state": state, "questions": questions}).encode()
     req = urllib.request.Request(
         f"{BASE_URL}/v1/systemone",
         data=body,
@@ -112,3 +128,10 @@ def classify(f: Features, hint: str | None = None, timeout: float = 30) -> dict:
             return json.load(res)
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"Jev API エラー {e.code}: {e.read().decode(errors='replace')}") from e
+
+
+def classify(f: Features, hint: str | None = None, mode: str = "both", timeout: float = 30) -> dict:
+    state = {"audio_features": describe(f, mode)}
+    if hint:
+        state["hint"] = hint
+    return call(state, build_questions(), timeout)

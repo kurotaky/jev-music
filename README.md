@@ -75,6 +75,14 @@ uv run python scripts/eval_examples.py
 - 低音比（150Hz 未満）・高音比（4kHz 超）・スペクトル平坦度を追加
 - ジャンルの説明を、state に渡す特徴量と同じ語彙（低音・打楽器・音圧・抑揚）で書き直した
 
+## Jev の性質を調べる実験
+
+`scripts/probe.py` で、Jev が state の数値と言葉のどちらを見ているかを調べられる。結果と考察は [docs/jev-probe.md](docs/jev-probe.md)。
+
+```sh
+uv run python scripts/probe.py   # docs/probe-data.{md,json} を再生成
+```
+
 ## Jev に投げている質問
 
 | key | type | 内容 |
